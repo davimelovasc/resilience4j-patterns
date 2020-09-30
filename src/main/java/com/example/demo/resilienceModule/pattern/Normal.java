@@ -1,32 +1,26 @@
 package com.example.demo.resilienceModule.pattern;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 import com.example.demo.GlobalVariables;
+import com.example.demo.cliente.Connector;
+
+import util.Options;
 
 @Service
 public class Normal implements Pattern {
 	
-	
-	@Autowired
-	private RestTemplate restTemplate;
-	
-	@Value("${service.url}")
-	private String url = "http://httpbin.org/status/200";
+	private Connector connector = new Connector();
 
 
 	@Override
-	public boolean request(GlobalVariables variables) {
+	public boolean request(GlobalVariables variables, Options options) {
 		try {
 			variables.requestsToServer++;
-
-			restTemplate.getForObject(url, String.class);
+			connector.makeRequest();
 			variables.successRequests++;
 		}catch(Exception ex) {
-			  
+			variables.failRequests++;
 			return false;
 		}
 		return true;
