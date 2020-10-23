@@ -1,23 +1,19 @@
 package com.example.demo.cliente;
 
-import java.util.HashMap;
-import java.util.Map;
-
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
-import com.example.demo.GlobalVariables;
-import com.example.demo.resilienceModule.pattern.CircuitBreakerPattern;
-import com.example.demo.resilienceModule.pattern.Normal;
-import com.example.demo.resilienceModule.pattern.Pattern;
-import com.example.demo.resilienceModule.pattern.RetryPattern;
+import com.example.demo.mapper.Options;
+import com.example.demo.mapper.result.Result;
+import com.example.demo.resilienceModule.patterns.CircuitBreakerPattern;
+import com.example.demo.resilienceModule.patterns.Normal;
+import com.example.demo.resilienceModule.patterns.Pattern;
+import com.example.demo.resilienceModule.patterns.RetryPattern;
 
 import io.github.resilience4j.common.retry.configuration.RetryConfigCustomizer;
-import util.Options;
 
 @Controller
 public class ClienteController {
@@ -30,36 +26,29 @@ public class ClienteController {
 	
 	@PostMapping("/")
 	public ResponseEntity<?> normalRequests(@RequestBody(required = false) Options options) {
-		System.out.println(options.getResiliencePattern());
-		System.out.println(options.getMaxRequest());
+		Result result = new Result();
 		long time = System.currentTimeMillis();
-		int reqSucessApp = 0, reqFailApp = 0;
 		
-		//GlobalVariables.resetVariables();
-		GlobalVariables variables = new GlobalVariables();
-		Pattern pattern = this.getPattern(options, variables);
+		Pattern pattern = this.getPattern(options, result);
 		
-		Map<String, String> response = new HashMap<>();
-		
-		
-		
-		for (int i = 0; i < options.getMaxRequest() && variables.successRequests < options.getQtdReqSuccess() ; i++) {
-			if(pattern.request(variables, options)) {
-				reqSucessApp++;
+		for (int i = 0; i < options.getRequestConfiguration().getMaxRequests() && 
+						result.getResilienceModuleToExternalService().getSuccess() < options.getRequestConfiguration().getSuccessRequests() ; i++) {
+			if(pattern.request(result, options)) {
+				result.getClientToModule().setSuccess(result.getClientToModule().getSuccess() + 1);
 			} else {
-				reqFailApp++;
+				result.getClientToModule().setError(result.getClientToModule().getError() + 1);
 			}
 		}
 		time = System.currentTimeMillis() - time;
+		result.setTotalTime(time);
 		
-		response.put("Resilience Pattern: ", pattern.getClass().getSimpleName());
-		response.put("Time (ms): ", String.valueOf(time));
-		response.put("Total req bem sucedidas (app cliente)", String.valueOf(reqSucessApp));
-		response.put("Total req mal sucedidas (app cliente)", String.valueOf(reqFailApp));
-		response.put("Total req bem sucedidas ao sv (mod. resiliencia)", String.valueOf(variables.successRequests));
-		response.put("Total req mal sucedidas ao sv (mod. resiliencia)", String.valueOf(variables.failRequests));
+		if(result.getResilienceModuleToExternalService().getSuccess() > 0) {
+			result.getResilienceModuleToExternalService().setTotalSuccessTime(
+					result.getResilienceModuleToExternalService().getTotalSuccessTime() / 
+					result.getResilienceModuleToExternalService().getSuccess() );
+		}
 		
-		return new ResponseEntity<>(response, HttpStatus.OK);
+		return new ResponseEntity<>(result, HttpStatus.OK);
 	}
 	
 	@PostMapping("/config")
@@ -68,17 +57,16 @@ public class ClienteController {
 		return null;
 	}
 	
-	private Pattern getPattern(Options options, GlobalVariables variables) {
-		String patternKey = options.getResiliencePattern();
+	private Pattern getPattern(Options options, Result result) {
+		String patternKey = options.getRunPolicy();
 		if(patternKey.equalsIgnoreCase(Util.NORMAL_PATTERN_KEY)) {
+			normal = new Normal(options, result);
 			return this.normal;
 		} else if(patternKey.equalsIgnoreCase(Util.CIRCUIT_BREAKER_PATTERN_KEY)) {
-			cb = new CircuitBreakerPattern(options.getCircuitBreakerParams(), variables);
-			cb.createAndConfigCircuitBreaker(options.getCircuitBreakerParams(), variables);
-			return this.cb;
+			cb = new CircuitBreakerPattern(options, result);
+			return cb;
 		} else if(patternKey.equalsIgnoreCase(Util.RETRY_PATTERN_KEY)) {
-			retry = new RetryPattern(options.getRetryParams(), variables);
-			retry.createAndConfigRetry(options.getRetryParams(), variables);
+			retry = new RetryPattern(options, result);
 			return retry;
 		}
 		return normal;

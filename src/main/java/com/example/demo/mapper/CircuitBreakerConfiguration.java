@@ -1,6 +1,6 @@
-package util;
+package com.example.demo.mapper;
 
-public class CircuitBreakerParams {
+public class CircuitBreakerConfiguration {
 	private Float failureThreshold = 50.0f; //failureRateThreshold
 	private Integer slidingWindowSize = 100;
 	private Integer minimumNumberOfCalls = 100;

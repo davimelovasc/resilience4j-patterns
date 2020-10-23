@@ -1,41 +1,42 @@
-package com.example.demo.resilienceModule.pattern;
+package com.example.demo.resilienceModule.patterns;
 
 import java.time.Duration;
 import java.util.function.Supplier;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-
-import com.example.demo.GlobalVariables;
-import com.example.demo.cliente.Connector;
+import com.example.demo.mapper.CircuitBreakerConfiguration;
+import com.example.demo.mapper.Options;
+import com.example.demo.mapper.result.Result;
+import com.example.demo.resilienceModule.Connector;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.vavr.control.Try;
-import util.CircuitBreakerParams;
-import util.Options;
 
 
 public class CircuitBreakerPattern implements Pattern {
 	
-	private Connector connector = new Connector();
+	private Connector connector;
 	
 	private CircuitBreaker circuitBreaker;
 	
 	private Supplier<Boolean> decoratedSupplier;
 	
-	public CircuitBreakerPattern(CircuitBreakerParams params, GlobalVariables variables) {
-		this.createAndConfigCircuitBreaker(params, variables);
+	public CircuitBreakerPattern(Options params, Result result) {
+		connector = new Connector(params.getUrlConfiguration(), params.getRequestConfiguration().getTimeout());
+		this.createAndConfigCircuitBreaker(params.getCircuitBreakerConfiguration(), result);
 	}
 
-	public boolean request(GlobalVariables variables, Options options) {
-		variables.requestsToServer++;
-		return Try.ofSupplier(decoratedSupplier).recover(throwable -> false).get();
+	public boolean request(Result result, Options options) {
+		long time = System.currentTimeMillis();
+		result.getResilienceModuleToExternalService().setTotal(result.getResilienceModuleToExternalService().getTotal() + 1);
+		boolean aux = Try.ofSupplier(decoratedSupplier).recover(throwable -> false).get();
+		result.getResilienceModuleToExternalService().setTotalSuccessTime(
+				result.getResilienceModuleToExternalService().getTotalSuccessTime() + time);
+		return aux;
 	}
 	
-	public void createAndConfigCircuitBreaker(CircuitBreakerParams params, GlobalVariables variables) {
+	public void createAndConfigCircuitBreaker(CircuitBreakerConfiguration params, Result result) {
 		CircuitBreakerConfig circuitBreakerConfig = CircuitBreakerConfig.custom()
 			    .failureRateThreshold(params.getFailureThreshold())
 			    .slidingWindowSize(params.getSlidingWindowSize())
@@ -55,12 +56,13 @@ public class CircuitBreakerPattern implements Pattern {
 		
 		circuitBreaker.getEventPublisher()
 		.onSuccess(event -> {
-			variables.successRequests++;
+			result.getResilienceModuleToExternalService().setSuccess(result.getResilienceModuleToExternalService().getSuccess() + 1);
 		})
 		.onError(event -> {
-			variables.failRequests++;
+			result.getResilienceModuleToExternalService().setError(result.getResilienceModuleToExternalService().getError() + 1);
 		})
 		.onStateTransition(event -> {
+			result.getCircuitBreakerMetrics().setBreakCount( result.getCircuitBreakerMetrics().getBreakCount() + 1 );
 			System.out.println("mudou estado cb");
 		});
 		

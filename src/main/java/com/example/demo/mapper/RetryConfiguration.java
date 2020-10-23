@@ -1,6 +1,6 @@
-package util;
+package com.example.demo.mapper;
 
-public class RetryParams {
+public class RetryConfiguration {
 	private Integer count = 3; //maxAttempts
 	private Integer sleepDuration = 500; //waitDuration [ms]
 	private String sleepDurationType = "FIXED"; //FIXED / EXPONENTIAL_BACKOFF
